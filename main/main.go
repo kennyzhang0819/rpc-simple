@@ -1,82 +1,80 @@
 package main
 
 import (
-	"context"
-	"errors"
+	"bytes"
+	"encoding/json"
+	"fmt"
 	"log"
-	"rpcsimple/client"
-	"rpcsimple/codec"
+	"net/http"
 	"rpcsimple/registry"
 	"rpcsimple/server"
-	"strings"
 	"sync"
 	"time"
 )
 
-type PersonService string
-type Person struct {
-	Name string
-	Age  int
+type Math struct{}
+
+type Args struct {
+	A, B int
 }
 
-func (p PersonService) FindOldest(args []Person, reply *string) error {
-	if len(args) == 0 {
-		return errors.New("persons is empty")
-	}
-	oldest := 0
-	for i, p := range args {
-		if p.Age > args[oldest].Age {
-			oldest = i
-		}
-	}
-	*reply = args[oldest].Name
+func (m *Math) Add(args Args, reply *int) error {
+	*reply = args.A + args.B
 	return nil
 }
 
-func (p PersonService) Names(args []Person, reply *string) error {
-	if len(args) == 0 {
-		return errors.New("persons is empty")
+func call(addr string, ctx server.Context) (int, error) {
+	log.Printf("Calling rpc %s with args %v", ctx.ServiceMethod, ctx.Args)
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(ctx); err != nil {
+		return 0, fmt.Errorf("failed to encode request: %v", err)
 	}
-	names := make([]string, 0)
-	for _, p := range args {
-		names = append(names, p.Name)
+
+	resp, err := http.Post(fmt.Sprintf("http://%s/rpc", addr), "application/json", &buf)
+	if err != nil {
+		return 0, fmt.Errorf("failed to make POST request: %v", err)
 	}
-	*reply = strings.Join(names, ",")
-	return nil
+	defer resp.Body.Close()
+
+	var result int
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return 0, fmt.Errorf("failed to decode response: %v", err)
+	}
+
+	return result, nil
 }
 
 func main() {
 	log.SetFlags(0)
-	network := "tcp"
 	addr := "127.0.0.1:9999"
-	ctx, canc := context.WithTimeout(context.Background(), time.Second*5)
-	defer canc()
 
-	var personService PersonService
+	var mathService Math
 	r := registry.NewRegistry()
-	r.Register(&personService)
+	r.Register(&mathService)
 
-	go server.Start(network, addr, r)
-	opt := &server.Option{
-		MagicNumber:    server.MagicNumber,
-		CodecType:      codec.HttpType,
-		ConnectTimeout: time.Second,
-	}
-	client, _ := client.Connect(network, addr, opt)
+	go server.Start(addr, r)
+	time.Sleep(100 * time.Millisecond)
 
-	time.Sleep(time.Second)
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		people := []Person{
-			{"Tom", 20},
-			{"Jerry", 18},
-			{"Mickey", 25},
-		}
-		var reply string
-		client.Call(ctx, "PersonService.FindOldest", people, &reply)
-		log.Printf("Oldest person is %s.", reply)
-	}()
+
+	for i := 0; i < 5; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+
+			ctx := server.Context{
+				ConnectTimeout: 5 * time.Second,
+				HandleTimeout:  5 * time.Second,
+				ServiceMethod:  "Math.Add",
+				Args:           []interface{}{map[string]int{"A": i, "B": i + 1}},
+			}
+
+			if result, err := call(addr, ctx); err != nil {
+				log.Fatalf("Failed to call remote procedure: %v", err)
+			} else {
+				log.Printf("Result: %d", result)
+			}
+		}(i)
+	}
 	wg.Wait()
 }

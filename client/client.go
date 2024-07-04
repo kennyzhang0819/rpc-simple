@@ -33,7 +33,7 @@ func (call *Call) done() {
 // multiple goroutines simultaneously.
 type Client struct {
 	c        codec.Codec
-	opt      *server.Option
+	opt      *server.Context
 	sending  sync.Mutex // protect following
 	header   codec.Header
 	lock     sync.Mutex // protect following
@@ -176,7 +176,7 @@ func (client *Client) Call(ctx context.Context, serviceMethod string, args, repl
 	}
 }
 
-func parseOptions(options ...*server.Option) (*server.Option, error) {
+func parseOptions(options ...*server.Context) (*server.Context, error) {
 	if len(options) == 0 || options[0] == nil {
 		return server.DefaultOption, nil
 	}
@@ -193,7 +193,7 @@ func parseOptions(options ...*server.Option) (*server.Option, error) {
 	return option, nil
 }
 
-func NewClient(conn net.Conn, opt *server.Option) (*Client, error) {
+func NewClient(conn net.Conn, opt *server.Context) (*Client, error) {
 	c := codec.NewCodecFuncMap[opt.CodecType]
 	if c == nil {
 		err := fmt.Errorf("invalid codec type %s", opt.CodecType)
@@ -208,7 +208,7 @@ func NewClient(conn net.Conn, opt *server.Option) (*Client, error) {
 	return newClientCodec(c(conn), opt), nil
 }
 
-func newClientCodec(c codec.Codec, opt *server.Option) *Client {
+func newClientCodec(c codec.Codec, opt *server.Context) *Client {
 	client := &Client{
 		seq:     1, // seq starts with 1, 0 means invalid call
 		c:       c,
@@ -224,9 +224,9 @@ type clientResult struct {
 	err    error
 }
 
-type newClientFunc func(conn net.Conn, opt *server.Option) (client *Client, err error)
+type newClientFunc func(conn net.Conn, opt *server.Context) (client *Client, err error)
 
-func dialTimeout(f newClientFunc, network, address string, opts ...*server.Option) (client *Client, err error) {
+func dialTimeout(f newClientFunc, network, address string, opts ...*server.Context) (client *Client, err error) {
 	opt, err := parseOptions(opts...)
 	if err != nil {
 		return nil, err
@@ -259,6 +259,6 @@ func dialTimeout(f newClientFunc, network, address string, opts ...*server.Optio
 }
 
 // Connect connects to an RPC server at the specified network address
-func Connect(network, address string, opts ...*server.Option) (*Client, error) {
+func Connect(network, address string, opts ...*server.Context) (*Client, error) {
 	return dialTimeout(NewClient, network, address, opts...)
 }
