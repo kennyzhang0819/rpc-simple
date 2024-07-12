@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"rpcsimple/client"
 	"rpcsimple/registry"
 	"rpcsimple/server"
-	"sync"
+	"runtime"
 	"time"
 )
 
@@ -30,7 +31,7 @@ func call(addr string, ctx server.Context) (int, error) {
 		return 0, fmt.Errorf("failed to encode request: %v", err)
 	}
 
-	resp, err := http.Post(fmt.Sprintf("http://%s/rpc", addr), "application/json", &buf)
+	resp, err := http.Post(fmt.Sprintf("http://%s/call", addr), "application/json", &buf)
 	if err != nil {
 		return 0, fmt.Errorf("failed to make POST request: %v", err)
 	}
@@ -52,29 +53,21 @@ func main() {
 	r := registry.NewRegistry()
 	r.Register(&mathService)
 
-	go server.Start(addr, r)
-	time.Sleep(100 * time.Millisecond)
+	runtime.GOMAXPROCS(runtime.NumCPU())
 
-	var wg sync.WaitGroup
+	go func() {
+		server.Start(addr, r)
+	}()
+	log.Printf("Server is running on %s", addr)
+	time.Sleep(1 * time.Second)
 
-	for i := 0; i < 5; i++ {
-		wg.Add(1)
-		go func(i int) {
-			defer wg.Done()
+	client := client.NewClient(fmt.Sprintf("http://%s/call", addr))
+	args := make(map[string]interface{})
+	args["A"] = 1
+	args["B"] = 2
+	response := client.Call("Math.Add", args)
+	log.Printf("Response: %v", response.Result)
 
-			ctx := server.Context{
-				ConnectTimeout: 5 * time.Second,
-				HandleTimeout:  5 * time.Second,
-				ServiceMethod:  "Math.Add",
-				Args:           []interface{}{map[string]int{"A": i, "B": i + 1}},
-			}
-
-			if result, err := call(addr, ctx); err != nil {
-				log.Fatalf("Failed to call remote procedure: %v", err)
-			} else {
-				log.Printf("Result: %d", result)
-			}
-		}(i)
-	}
-	wg.Wait()
+	// Prevent the main function from exiting
+	// select {}
 }

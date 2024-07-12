@@ -2,11 +2,9 @@ package client
 
 import (
 	"fmt"
-	"net"
-	"rpcsimple/server"
-	"strings"
+	"log"
+	"net/http"
 	"testing"
-	"time"
 )
 
 func _assert(condition bool, msg string, v ...interface{}) {
@@ -16,20 +14,17 @@ func _assert(condition bool, msg string, v ...interface{}) {
 }
 
 func TestClient_dialTimeout(t *testing.T) {
-	t.Parallel()
-	l, _ := net.Listen("tcp", ":0")
 
-	f := func(conn net.Conn, opt *server.Context) (client *Client, err error) {
-		_ = conn.Close()
-		time.Sleep(time.Second * 2)
-		return nil, nil
+	client := &http.Client{}
+
+	resp, err := client.Post("127.0.0.1:9999", "application/json", nil)
+	if err != nil {
+		log.Printf("Error: %v", err)
 	}
-	t.Run("timeout", func(t *testing.T) {
-		_, err := dialTimeout(f, "tcp", l.Addr().String(), &server.Context{ConnectTimeout: time.Second})
-		_assert(err != nil && strings.Contains(err.Error(), "connect timeout"), "expect a timeout error")
-	})
-	t.Run("0", func(t *testing.T) {
-		_, err := dialTimeout(f, "tcp", l.Addr().String(), &server.Context{ConnectTimeout: 0})
-		_assert(err == nil, "0 means no limit")
-	})
+	// client := NewClient("127.0.0.1:9999")
+	// args := make(map[string]interface{})
+	// args["A"] = 1
+	// args["B"] = 2
+	// response := client.Call("Math.Add", args)
+	log.Printf("Response: %v", resp)
 }
