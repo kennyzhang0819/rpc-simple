@@ -19,7 +19,16 @@ type Args struct {
 	A, B int
 }
 
+type Args2 struct {
+	A, B string
+}
+
 func (m *Math) Add(args Args, reply *int) error {
+	*reply = args.A + args.B
+	return nil
+}
+
+func (m *Math) AddString(args Args2, reply *string) error {
 	*reply = args.A + args.B
 	return nil
 }
@@ -61,13 +70,13 @@ func main() {
 	log.Printf("Server is running on %s", addr)
 	time.Sleep(1 * time.Second)
 
-	client := client.NewClient(fmt.Sprintf("http://%s/call", addr))
+	client := client.NewClient("http://127.0.0.1:9999/call")
 	args := make(map[string]interface{})
-	args["A"] = 1
-	args["B"] = 2
-	response := client.Call("Math.Add", args)
+	args["A"] = "hello"
+	args["B"] = "world"
+	response := client.Call("Math.AddString", args)
 	log.Printf("Response: %v", response.Result)
 
-	// Prevent the main function from exiting
-	// select {}
+	select {}
+
 }

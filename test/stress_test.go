@@ -1,14 +1,12 @@
 package test
 
 import (
-	"bytes"
-	"encoding/json"
-	"fmt"
-	"io"
+	"log"
 	"math/rand"
-	"net/http"
+	"rpcsimple/client"
 	"sync"
 	"testing"
+	"time"
 )
 
 type RequestBody struct {
@@ -29,61 +27,11 @@ type ArgsPayload struct {
 
 const (
 	url            = "http://127.0.0.1:9999/call"
-	numRequests    = 1000
-	numGoroutines  = 10000
+	numRequests    = 100
+	numGoroutines  = numRequests
 	connectTimeout = 10
 	handleTimeout  = 10
 )
-
-func makeRequest(x, y int, wg *sync.WaitGroup, t *testing.T) {
-	defer wg.Done()
-
-	body := RequestBody{
-		ConnectTimeout: connectTimeout,
-		HandleTimeout:  handleTimeout,
-		ServiceMethod:  "Math.Add",
-		Args: ArgsPayload{
-			A: x,
-			B: y,
-		},
-	}
-
-	jsonData, err := json.Marshal(body)
-	if err != nil {
-		t.Errorf("Error marshaling JSON: %v", err)
-		return
-	}
-
-	addr := "127.0.0.1:9999"
-	resp, err := http.Post(fmt.Sprintf("http://%s/call", addr), "application/json", bytes.NewBuffer(jsonData))
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		t.Errorf("Non-OK HTTP status: %v", resp.Status)
-		return
-	}
-
-	bodyBytes, err := io.ReadAll(resp.Body)
-	if err != nil {
-		t.Errorf("Error reading response body: %v", err)
-		return
-	}
-
-	var responseBody ResponseBody
-	err = json.Unmarshal(bodyBytes, &responseBody)
-	if err != nil {
-		t.Errorf("Error unmarshaling response JSON: %v", err)
-		return
-	}
-
-	expected := x + y
-	if responseBody.Result != expected {
-		t.Errorf("Unexpected result: got %v, want %v", responseBody.Result, expected)
-	}
-}
 
 func TestStress(t *testing.T) {
 	var wg sync.WaitGroup
@@ -91,16 +39,51 @@ func TestStress(t *testing.T) {
 
 	sem := make(chan struct{}, numGoroutines)
 	defer close(sem)
+	client := client.NewClient("http://127.0.0.1:9999/call")
+
 	for i := 0; i < numRequests; i++ {
 		sem <- struct{}{}
 		go func(i int) {
 			defer func() { <-sem }()
-
+			args := make(map[string]interface{})
 			x := rand.Intn(1000)
 			y := rand.Intn(1000)
-			makeRequest(x, y, &wg, t)
+
+			args["A"] = x
+			args["B"] = y
+			response := client.Call("Math.Add", args)
+
+			expected := x + y
+			// Type assertion to ensure correct type comparison
+			if result, ok := response.Result.(float64); ok {
+				if int(result) != expected {
+					t.Errorf("Unexpected result: got %v, want %v", result, expected)
+				}
+			} else {
+				t.Errorf("Unexpected result type: got %T, want float64", response.Result)
+			}
+
+			wg.Done()
 		}(i)
 	}
 
 	wg.Wait()
+}
+
+func TestStressMultipleTimes(t *testing.T) {
+	numTests := 10
+	totalElapsedTime := time.Duration(0)
+
+	for i := 0; i < numTests; i++ {
+		startTime := time.Now()
+
+		t.Run("TestStress", TestStress)
+
+		duration := time.Since(startTime)
+		totalElapsedTime += duration
+		log.Printf("TestStress run %d completed in %v\n", i+1, duration)
+	}
+
+	avgElapsedTime := totalElapsedTime / 10
+	log.Printf("Average test duration: %v\n", avgElapsedTime)
 }

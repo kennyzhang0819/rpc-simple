@@ -38,7 +38,7 @@ var DefaultServer, _ = NewServer(5000)
 // 启动服务器
 func (server *Server) Start(address string, funcMap *registry.Registry) {
 	server.funcMap = funcMap
-	http.HandleFunc("/call", server.handleRequestWithPool)
+	http.HandleFunc("/call", server.handleRequest)
 	log.Printf("Starting HTTP server on %s\n", address)
 	if err := http.ListenAndServe(address, nil); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

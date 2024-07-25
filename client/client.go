@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
 	"net/http"
 	"sync"
 )
@@ -30,7 +29,7 @@ type RequestBody struct {
 }
 
 type ResponseBody struct {
-	Result int `json:"result"`
+	Result interface{} `json:"result"`
 }
 
 type Client struct {
@@ -142,7 +141,6 @@ func (client *Client) send(request *Request) {
 		request.done()
 		return
 	}
-	log.Printf("response body: %v", responseBody)
 	request.responseBody = responseBody
 	request.done()
 }
